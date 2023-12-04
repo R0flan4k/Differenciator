@@ -9,6 +9,7 @@
 #include "math_operations.h"
 
 const char * DIFFERENCIATOR_DUMP_FILE_NAME = "./graphviz/differenciator_dump";
+const char * DIFFERENCIATOR_LATEX_DUMP_FILE_NAME = "./latex/differenciator_dump";
 const size_t MAX_FILE_NAME_SIZE = 64;
 const DifferenciatorVariable SUPPORTED_VARIABLES[] = {
     {.name = "x", .value = 0},
@@ -33,6 +34,8 @@ static DError_t d_division(const TreeNode * node, Tree * d_tree, TreeNode * d_no
 static DError_t d_power(const TreeNode * node, Tree * d_tree, TreeNode * d_node);
 static DError_t d_sinus(const TreeNode * node, Tree * d_tree, TreeNode * d_node);
 static DError_t d_cosinus(const TreeNode * node, Tree * d_tree, TreeNode * d_node);
+static void latex_print_equation(const Tree * tree, FILE * fp, const char * func);
+static void latex_print_equation_recursive(const TreeNode * node, FILE * fp);
 
 
 DError_t create_dftr_tree(Tree * tree, char * buffer)
@@ -314,6 +317,126 @@ static void dftr_print_tree_edges(const TreeNode * node, FILE * fp)
     {
         fprintf(fp, "    node%p:<r> -> node%p;\n", node, node->right);
         dftr_print_tree_edges(node->right, fp);
+    }
+
+    return;
+}
+
+
+void dftr_latex(const Tree * tree, const Tree * d_tree)
+{
+    MY_ASSERT(tree);
+    MY_ASSERT(d_tree);
+
+    FILE * fp = NULL;
+
+    char latex_file_name[MAX_FILE_NAME_SIZE] = "";
+    make_file_extension(latex_file_name, DIFFERENCIATOR_LATEX_DUMP_FILE_NAME, ".tex");
+
+    if (!(fp = file_open(latex_file_name, "wb")))
+    {
+        return;
+    }
+
+    fprintf(fp, "\\documentclass[a4paper, 12pt]{article}\n"
+                "\\usepackage[a4paper,top=1.5cm, bottom=1.5cm, left=1cm, right=1cm]{geometry}\n"
+                "\\usepackage[utf8]{inputenc}\n"
+                "\\usepackage{amsmath}\n"
+                "\\usepackage{amsfonts}\n"
+                "\\usepackage[english]{babel}\n"
+                "\\usepackage{indentfirst}\n"
+                "\\usepackage{natbib}\n"
+                "\\usepackage{mathrsfs}\n"
+                "\\title{Differenciator}\n"
+                "\\author{Kiselev Ruslan}\n"
+                "\\begin{document}\n"
+                "\t\\maketitle\n"
+                "\tSource equation:\n\n");
+    latex_print_equation(tree, fp, "f");
+
+    fprintf(fp, "\tDifferenciated equation:\n\n");
+    latex_print_equation(d_tree, fp, "f^{'}");
+
+    fprintf(fp, "\\end{document}\n");
+
+    fclose(fp);
+
+    static size_t dftr_tex_count = 0;
+    char pdf_latex_file_name[MAX_FILE_NAME_SIZE] = "";
+    char command_string[MAX_STR_SIZE] = "";
+    char extension_string[MAX_FILE_NAME_SIZE] = "";
+
+    sprintf(extension_string, "%zd.pdf", dftr_tex_count);
+    make_file_extension(pdf_latex_file_name, DIFFERENCIATOR_LATEX_DUMP_FILE_NAME, extension_string);
+    sprintf(command_string, "pdflatex --output-directory=./latex %s", latex_file_name);
+    system(command_string);
+
+    dftr_tex_count++;
+}
+
+
+static void latex_print_equation(const Tree * tree, FILE * fp, const char * func)
+{
+    MY_ASSERT(tree);
+    MY_ASSERT(fp);
+
+    fprintf(fp, "\t$\\;\\;\\; {%s} = ", func);
+    latex_print_equation_recursive(tree->root, fp);
+    fprintf(fp, "\t$;\n\n");
+
+    return;
+}
+
+
+static void latex_print_equation_recursive(const TreeNode * node, FILE * fp)
+{
+    MY_ASSERT(node);
+    MY_ASSERT(fp);
+
+    if (node->left && node->right)
+    {
+        fprintf(fp, "( ");
+        latex_print_equation_recursive(node->left, fp);
+        if (node->value.value.string[0] == '*')
+        {
+            fprintf(fp, "\\cdot ");
+        }
+        else
+        {
+            fprintf(fp, "%s ", node->value.value.string);
+        }
+        latex_print_equation_recursive(node->right, fp);
+        fprintf(fp, ") ");
+    }
+    else if (node->left && !node->right)
+    {
+        fprintf(fp, "%s( ", node->value.value.string);
+        latex_print_equation_recursive(node->left, fp);
+        fprintf(fp, ") ");
+    }
+    else if (!node->left && !node->right)
+    {
+        fprintf(fp, "{ ");
+        switch (node->value.type)
+        {
+            case TREE_NODE_TYPES_NUMBER:
+                fprintf(fp, "%lg ", node->value.value.number);
+                break;
+
+            case TREE_NODE_TYPES_STRING:
+                fprintf(fp, "%s ", node->value.value.string);
+                break;
+
+            case TREE_NODE_TYPES_NO_TYPE:
+            default:
+                MY_ASSERT(0 && "UNREACHABLE");
+                break;
+        }
+        fprintf(fp, "} ");
+    }
+    else
+    {
+        MY_ASSERT(0 && "UNREACHABLE");
     }
 
     return;

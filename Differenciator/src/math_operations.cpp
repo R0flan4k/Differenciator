@@ -2,6 +2,7 @@
 
 #include "math_operations.h"
 #include "my_assert.h"
+#include "tree.h"
 
 static MathOperation create_math_operation(const char * op_name, MathOperationTypes op_type,
                                            MathOperations id, double (*operation)(const double, const double));
