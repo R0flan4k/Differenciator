@@ -6,9 +6,20 @@
         MATH_OPERATION_TYPES_BINARY = 2,
     };
 
+    enum MathOperations {
+        MATH_OPERATIONS_ADDITION       = 1,
+        MATH_OPERATIONS_SUBTRACTION    = 2,
+        MATH_OPERATIONS_MULTIPLICATION = 3,
+        MATH_OPERATIONS_DIVISION       = 4,
+        MATH_OPERATIONS_POWER          = 5,
+        MATH_OPERATIONS_SINUS          = 6,
+        MATH_OPERATIONS_COSINUS        = 7,
+    };
+
     struct MathOperation {
         const char * name;
         MathOperationTypes type;
+        MathOperations id;
         double (*operation)(const double, const double);
     };
 

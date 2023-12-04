@@ -369,3 +369,29 @@ static void print_text_nodes(const TreeNode * main_node)
 
     return;
 }
+
+
+TError_t tree_copy_branch(Tree * dst_tree, TreeNode * dst_node, const TreeNode * src_node)
+{
+    MY_ASSERT(dst_tree);
+    MY_ASSERT(dst_node);
+    MY_ASSERT(src_node);
+
+    TError_t errors = 0;
+
+    dst_node->value = src_node->value;
+
+    if (src_node->left)
+    {
+       errors |= tree_insert(dst_tree, dst_node, TREE_NODE_BRANCH_LEFT, TREE_NULL);
+       tree_copy_branch(dst_tree, dst_node->left, src_node->left);
+    }
+
+    if (src_node->right)
+    {
+       errors |= tree_insert(dst_tree, dst_node, TREE_NODE_BRANCH_RIGHT, TREE_NULL);
+       tree_copy_branch(dst_tree, dst_node->right, src_node->right);
+    }
+
+    return errors;
+}

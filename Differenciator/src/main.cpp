@@ -24,7 +24,6 @@ int main(int argc, char * argv[])
     }
 
     Tree dftr_tree = {};
-
     op_new_tree(&dftr_tree, TREE_NULL);
     // op_new_tree(&dftr_tree, 0);
 
@@ -42,11 +41,22 @@ int main(int argc, char * argv[])
         return dftr_errors;
     printf("Answer = %.2lf\n", answer);
 
+    Tree dftr_d_tree = {};
+    op_new_tree(&dftr_d_tree, TREE_NULL);
+
+    if (dftr_errors = dftr_create_diff_tree(&dftr_tree, &dftr_d_tree))
+    {
+        return dftr_errors;
+    }
+
     dftr_dump(&dftr_tree);
+    dftr_dump(&dftr_d_tree);
     tree_dump(&dftr_tree);
+    tree_dump(&dftr_d_tree);
 
     free(buffer);
     op_delete_tree(&dftr_tree);
+    op_delete_tree(&dftr_d_tree);
 
     return 0;
 }

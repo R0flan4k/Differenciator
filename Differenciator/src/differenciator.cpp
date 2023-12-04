@@ -10,6 +10,10 @@
 
 const char * DIFFERENCIATOR_DUMP_FILE_NAME = "./graphviz/differenciator_dump";
 const size_t MAX_FILE_NAME_SIZE = 64;
+const DifferenciatorVariable SUPPORTED_VARIABLES[] = {
+    {.name = "x", .value = 0},
+};
+size_t SUPPORTED_VARIABLES_NUMBER = sizeof(SUPPORTED_VARIABLES) / sizeof(SUPPORTED_VARIABLES[0]);
 
 static DError_t create_dftr_nodes_recursive(Tree * tree, TreeNode * node, char * * buffer_ptr);
 static bool is_open_braket(const char * buffer_ptr);
@@ -19,6 +23,9 @@ static bool try_get_string(char * buffer_ptr, Tree_t * val, int * token_size);
 static void dftr_print_tree_nodes(const TreeNode * node, FILE * fp);
 static void dftr_print_tree_edges(const TreeNode * node, FILE * fp);
 static DError_t dftr_eval_recursive(const TreeNode * node, double * answer);
+static DError_t get_node_answer(const TreeNode * node, DifferenciatorInput input_type, double * answer, size_t i);
+static DifferenciatorInput get_node_input_type(const TreeNode * node, size_t * i);
+static DError_t dftr_create_diff_node(const TreeNode * node, Tree * d_tree, TreeNode * d_node);
 
 
 DError_t create_dftr_tree(Tree * tree, char * buffer)
@@ -322,32 +329,77 @@ static DError_t dftr_eval_recursive(const TreeNode * node, double * answer)
 
     DError_t dftr_errors = 0;
 
-    double left = 0, right = 0;
-    bool is_supported_operation = false;
     size_t i = 0;
+    DifferenciatorInput input_type = get_node_input_type(node, &i);
+
+    dftr_errors |= get_node_answer(node, input_type, answer, i);
+
+    return dftr_errors;
+}
+
+
+static DifferenciatorInput get_node_input_type(const TreeNode * node, size_t * i)
+{
+    MY_ASSERT(node);
+
+    DifferenciatorInput input_type = DIFFERENCIATOR_INPUT_INVALID;
+    bool is_supported_input = false;
 
     switch (node->value.type)
     {
         case TREE_NODE_TYPES_NUMBER:
-            *answer = node->value.value.number;
+            input_type = DIFFERENCIATOR_INPUT_NUMBER;
             break;
 
         case TREE_NODE_TYPES_STRING:
-            for (i = 0; i < MATH_OPERATIONS_ARRAY_SIZE; i++)
+            for (*i = 0; *i < MATH_OPERATIONS_ARRAY_SIZE; (*i)++)
             {
-                if (!strcmp(node->value.value.string, MATH_OPERATIONS_ARRAY[i].name))
+                if (!strcmp(node->value.value.string, MATH_OPERATIONS_ARRAY[*i].name))
                 {
-                    is_supported_operation = true;
+                    is_supported_input = true;
+                    input_type = DIFFERENCIATOR_INPUT_OPERATION;
                     break;
                 }
             }
 
-            if (!is_supported_operation)
+            if (!is_supported_input)
             {
-                dftr_errors |= DIFFERENCIATOR_ERRORS_UNSUPPORTED_OPERATION;
-                return dftr_errors;
+                for (*i = 0; *i < SUPPORTED_VARIABLES_NUMBER; (*i)++)
+                {
+                    if (!strcmp(node->value.value.string, SUPPORTED_VARIABLES[*i].name))
+                    {
+                        is_supported_input = true;
+                        input_type = DIFFERENCIATOR_INPUT_VARIABLE;
+                    }
+                }
             }
+            break;
 
+        case TREE_NODE_TYPES_NO_TYPE:
+        default:
+            MY_ASSERT(0 && "UNREACHABLE");
+            break;
+    }
+
+    return input_type;
+}
+
+
+static DError_t get_node_answer(const TreeNode * node, DifferenciatorInput input_type, double * answer, size_t i)
+{
+    MY_ASSERT(node);
+    MY_ASSERT(answer);
+
+    DError_t dftr_errors = 0;
+    double left = 0, right = 0;
+
+    switch (input_type)
+    {
+        case DIFFERENCIATOR_INPUT_NUMBER:
+            *answer = node->value.value.number;
+            break;
+
+        case DIFFERENCIATOR_INPUT_OPERATION:
             switch (MATH_OPERATIONS_ARRAY[i].type)
             {
                 case MATH_OPERATION_TYPES_UNARY:
@@ -369,17 +421,362 @@ static DError_t dftr_eval_recursive(const TreeNode * node, double * answer)
                     break;
             }
 
-            if (dftr_errors)
-            {
-                return dftr_errors;
-            }
-
             *answer = MATH_OPERATIONS_ARRAY[i].operation(left, right);
-            printf("%s: %lf\n\tleft: %lf\n\tright: %lf\n", MATH_OPERATIONS_ARRAY[i].name, *answer, left, right);
-
             break;
 
-        case TREE_NODE_TYPES_NO_TYPE:
+        case DIFFERENCIATOR_INPUT_VARIABLE:
+            *answer = SUPPORTED_VARIABLES[i].value;
+            break;
+
+        case DIFFERENCIATOR_INPUT_INVALID:
+            dftr_errors |= DIFFERENCIATOR_ERRORS_INVALID_INPUT;
+            break;
+
+        default:
+            MY_ASSERT(0 && "UNREACHABLE");
+            break;
+    }
+
+    return dftr_errors;
+}
+
+
+DError_t dftr_create_diff_tree(const Tree * tree, Tree * d_tree)
+{
+    MY_ASSERT(tree);
+    MY_ASSERT(d_tree);
+
+    return dftr_create_diff_node(tree->root, d_tree, d_tree->root);
+}
+
+
+static DError_t dftr_create_diff_node(const TreeNode * node, Tree * d_tree, TreeNode * d_node)
+{
+    MY_ASSERT(node);
+    MY_ASSERT(d_node);
+
+    DError_t dftr_errors = 0;
+    TError_t tree_errors = 0;
+    size_t i = 0;
+    DifferenciatorInput input_type = get_node_input_type(node, &i);
+
+    switch (input_type)
+    {
+        case DIFFERENCIATOR_INPUT_NUMBER:
+            d_node->value.type = TREE_NODE_TYPES_NUMBER;
+            d_node->value.value.number = 0;
+            break;
+
+        case DIFFERENCIATOR_INPUT_VARIABLE:
+            d_node->value.type = TREE_NODE_TYPES_NUMBER;
+            d_node->value.value.number = 1;
+            break;
+
+        case DIFFERENCIATOR_INPUT_OPERATION:
+            switch (MATH_OPERATIONS_ARRAY[i].id)
+            {
+                case MATH_OPERATIONS_ADDITION:
+                    d_node->value.type = TREE_NODE_TYPES_STRING;
+                    d_node->value.value.string = "+";
+                    tree_errors |= tree_insert(d_tree, d_node, TREE_NODE_BRANCH_LEFT, TREE_NULL);
+                    tree_errors |= tree_insert(d_tree, d_node, TREE_NODE_BRANCH_RIGHT, TREE_NULL);
+
+                    if (tree_errors)
+                    {
+                        dftr_errors |= DIFFERENCIATOR_ERRORS_TREE_ERROR;
+                        return dftr_errors;
+                    }
+
+                    dftr_errors |= dftr_create_diff_node(node->left, d_tree, d_node->left);
+                    dftr_errors |= dftr_create_diff_node(node->right, d_tree, d_node->right);
+                    break;
+
+                case MATH_OPERATIONS_SUBTRACTION:
+                    d_node->value.type = TREE_NODE_TYPES_STRING;
+                    d_node->value.value.string = "-";
+                    tree_errors |= tree_insert(d_tree, d_node, TREE_NODE_BRANCH_LEFT, TREE_NULL);
+                    tree_errors |= tree_insert(d_tree, d_node, TREE_NODE_BRANCH_RIGHT, TREE_NULL);
+
+                    if (tree_errors)
+                    {
+                        dftr_errors |= DIFFERENCIATOR_ERRORS_TREE_ERROR;
+                        return dftr_errors;
+                    }
+
+                    dftr_errors |= dftr_create_diff_node(node->left, d_tree, d_node->left);
+                    dftr_errors |= dftr_create_diff_node(node->right, d_tree, d_node->right);
+                    break;
+
+                case MATH_OPERATIONS_MULTIPLICATION:
+                    d_node->value.type = TREE_NODE_TYPES_STRING;
+                    d_node->value.value.string = "+";
+
+                    tree_errors |= tree_insert(d_tree, d_node, TREE_NODE_BRANCH_LEFT, TREE_NULL);
+                    tree_errors |= tree_insert(d_tree, d_node, TREE_NODE_BRANCH_RIGHT, TREE_NULL);
+
+                    if (tree_errors)
+                    {
+                        dftr_errors |= DIFFERENCIATOR_ERRORS_TREE_ERROR;
+                        return dftr_errors;
+                    }
+
+                    d_node->left->value.type = TREE_NODE_TYPES_STRING;
+                    d_node->left->value.value.string = "*";
+                    d_node->right->value.type = TREE_NODE_TYPES_STRING;
+                    d_node->right->value.value.string = "*";
+
+                    tree_errors |= tree_insert(d_tree, d_node->left, TREE_NODE_BRANCH_LEFT, TREE_NULL);
+                    tree_errors |= tree_insert(d_tree, d_node->left, TREE_NODE_BRANCH_RIGHT, TREE_NULL);
+                    tree_errors |= tree_insert(d_tree, d_node->right, TREE_NODE_BRANCH_LEFT, TREE_NULL);
+                    tree_errors |= tree_insert(d_tree, d_node->right, TREE_NODE_BRANCH_RIGHT, TREE_NULL);
+
+                    if (tree_errors)
+                    {
+                        dftr_errors |= DIFFERENCIATOR_ERRORS_TREE_ERROR;
+                        return dftr_errors;
+                    }
+
+                    // d_node->left->left->value.type = node->left->value.type;
+                    // d_node->left->left->value.value = node->left->value.value;
+                    tree_errors |= tree_copy_branch(d_tree, d_node->left->left, node->left);
+                    dftr_errors |= dftr_create_diff_node(node->left, d_tree, d_node->left->right);
+                    // d_node->right->left->value.type = node->right->value.type;
+                    // d_node->right->left->value.value = node->right->value.value;
+                    tree_errors |= tree_copy_branch(d_tree, d_node->right->left, node->right);
+                    dftr_errors |= dftr_create_diff_node(node->right, d_tree, d_node->right->right);
+
+                    if (tree_errors)
+                    {
+                        dftr_errors |= DIFFERENCIATOR_ERRORS_TREE_ERROR;
+                        return dftr_errors;
+                    }
+
+                    break;
+
+                case MATH_OPERATIONS_DIVISION:
+                    d_node->value.type = TREE_NODE_TYPES_STRING;
+                    d_node->value.value.string = "/";
+
+                    tree_errors |= tree_insert(d_tree, d_node, TREE_NODE_BRANCH_LEFT, TREE_NULL);
+                    tree_errors |= tree_insert(d_tree, d_node, TREE_NODE_BRANCH_RIGHT, TREE_NULL);
+
+                    if (tree_errors)
+                    {
+                        dftr_errors |= DIFFERENCIATOR_ERRORS_TREE_ERROR;
+                        return dftr_errors;
+                    }
+
+                    d_node->left->value.type = TREE_NODE_TYPES_STRING;
+                    d_node->left->value.value.string = "-";
+                    d_node->right->value.type = TREE_NODE_TYPES_STRING;
+                    d_node->right->value.value.string = "*";
+
+                    tree_errors |= tree_insert(d_tree, d_node->left, TREE_NODE_BRANCH_LEFT, TREE_NULL);
+                    tree_errors |= tree_insert(d_tree, d_node->left, TREE_NODE_BRANCH_RIGHT, TREE_NULL);
+                    tree_errors |= tree_insert(d_tree, d_node->right, TREE_NODE_BRANCH_LEFT, TREE_NULL);
+                    tree_errors |= tree_insert(d_tree, d_node->right, TREE_NODE_BRANCH_RIGHT, TREE_NULL);
+
+                    if (tree_errors)
+                    {
+                        dftr_errors |= DIFFERENCIATOR_ERRORS_TREE_ERROR;
+                        return dftr_errors;
+                    }
+
+                    d_node->left->left->value.type = TREE_NODE_TYPES_STRING;
+                    d_node->left->left->value.value.string = "*";
+                    d_node->left->right->value.type = TREE_NODE_TYPES_STRING;
+                    d_node->left->right->value.value.string = "*";
+
+                    // d_node->right->left->value.type = node->right->value.type;
+                    // d_node->right->left->value.value = node->right->value.value;
+                    tree_errors |= tree_copy_branch(d_tree, d_node->right->left, node->right);
+                    // d_node->right->right->value.type = node->right->value.type;
+                    // d_node->right->right->value.value = node->right->value.value;
+                    tree_errors |= tree_copy_branch(d_tree, d_node->right->right, node->right);
+
+                    if (tree_errors)
+                    {
+                        dftr_errors |= DIFFERENCIATOR_ERRORS_TREE_ERROR;
+                        return dftr_errors;
+                    }
+
+                    tree_errors |= tree_insert(d_tree, d_node->left, TREE_NODE_BRANCH_LEFT, TREE_NULL);
+                    tree_errors |= tree_insert(d_tree, d_node->left, TREE_NODE_BRANCH_RIGHT, TREE_NULL);
+                    tree_errors |= tree_insert(d_tree, d_node->right, TREE_NODE_BRANCH_LEFT, TREE_NULL);
+                    tree_errors |= tree_insert(d_tree, d_node->right, TREE_NODE_BRANCH_RIGHT, TREE_NULL);
+
+                    if (tree_errors)
+                    {
+                        dftr_errors |= DIFFERENCIATOR_ERRORS_TREE_ERROR;
+                        return dftr_errors;
+                    }
+
+                    // d_node->left->left->left->value.type = node->left->value.type;
+                    // d_node->left->left->left->value.value = node->left->value.value;
+                    tree_errors |= tree_copy_branch(d_tree, d_node->left->left->left, node->left);
+                    dftr_errors |= dftr_create_diff_node(node->left, d_tree, d_node->left->left->right);
+                    // d_node->left->right->left->value.type = node->right->value.type;
+                    // d_node->left->right->left->value.value = node->right->value.value;
+                    tree_errors |= tree_copy_branch(d_tree, d_node->left->right->left, node->right);
+                    dftr_errors |= dftr_create_diff_node(node->right, d_tree, d_node->left->right->right);
+
+                    if (tree_errors)
+                    {
+                        dftr_errors |= DIFFERENCIATOR_ERRORS_TREE_ERROR;
+                        return dftr_errors;
+                    }
+
+                    break;
+
+                case MATH_OPERATIONS_POWER:
+                    d_node->value.type = TREE_NODE_TYPES_STRING;
+                    d_node->value.value.string = "*";
+
+                    tree_errors |= tree_insert(d_tree, d_node, TREE_NODE_BRANCH_LEFT, TREE_NULL);
+                    tree_errors |= tree_insert(d_tree, d_node, TREE_NODE_BRANCH_RIGHT, TREE_NULL);
+
+                    if (tree_errors)
+                    {
+                        dftr_errors |= DIFFERENCIATOR_ERRORS_TREE_ERROR;
+                        return dftr_errors;
+                    }
+
+                    d_node->left->value.type = TREE_NODE_TYPES_STRING;
+                    d_node->left->value.value.string = "*";
+                    dftr_errors |= dftr_create_diff_node(node->left, d_tree, d_node->right);
+
+                    tree_errors |= tree_insert(d_tree, d_node->left, TREE_NODE_BRANCH_LEFT, TREE_NULL);
+                    tree_errors |= tree_insert(d_tree, d_node->left, TREE_NODE_BRANCH_RIGHT, TREE_NULL);
+
+                    if (tree_errors)
+                    {
+                        dftr_errors |= DIFFERENCIATOR_ERRORS_TREE_ERROR;
+                        return dftr_errors;
+                    }
+
+                    d_node->left->left->value.type = TREE_NODE_TYPES_NUMBER;
+                    d_node->left->left->value.value.number = node->right->value.value.number;
+                    d_node->left->right->value.type = TREE_NODE_TYPES_STRING;
+                    d_node->left->right->value.value.string = "^";
+
+                    tree_errors |= tree_insert(d_tree, d_node->left->right, TREE_NODE_BRANCH_LEFT, TREE_NULL);
+                    tree_errors |= tree_insert(d_tree, d_node->left->right, TREE_NODE_BRANCH_RIGHT, TREE_NULL);
+
+                    if (tree_errors)
+                    {
+                        dftr_errors |= DIFFERENCIATOR_ERRORS_TREE_ERROR;
+                        return dftr_errors;
+                    }
+
+                    // d_node->left->right->left->value.type = node->left->value.type;
+                    // d_node->left->right->left->value.value = node->left->value.value;
+                    tree_errors |= tree_copy_branch(d_tree, d_node->left->right->left, node->left);
+                    d_node->left->right->right->value.type = TREE_NODE_TYPES_NUMBER;
+                    d_node->left->right->right->value.value.number = node->right->value.value.number - 1;
+
+                    if (tree_errors)
+                    {
+                        dftr_errors |= DIFFERENCIATOR_ERRORS_TREE_ERROR;
+                        return dftr_errors;
+                    }
+
+                    break;
+
+                case MATH_OPERATIONS_SINUS:
+                    d_node->value.type = TREE_NODE_TYPES_STRING;
+                    d_node->value.value.string = "*";
+
+                    tree_errors |= tree_insert(d_tree, d_node, TREE_NODE_BRANCH_LEFT, TREE_NULL);
+                    tree_errors |= tree_insert(d_tree, d_node, TREE_NODE_BRANCH_RIGHT, TREE_NULL);
+
+                    if (tree_errors)
+                    {
+                        dftr_errors |= DIFFERENCIATOR_ERRORS_TREE_ERROR;
+                        return dftr_errors;
+                    }
+
+                    d_node->left->value.type = TREE_NODE_TYPES_STRING;
+                    d_node->left->value.value.string = "cos";
+                    dftr_errors |= dftr_create_diff_node(node->left, d_tree, d_node->right);
+
+                    tree_errors |= tree_insert(d_tree, d_node->left, TREE_NODE_BRANCH_LEFT, TREE_NULL);
+
+                    if (tree_errors)
+                    {
+                        dftr_errors |= DIFFERENCIATOR_ERRORS_TREE_ERROR;
+                        return dftr_errors;
+                    }
+
+                    // d_node->left->left->value.type = node->left->value.type;
+                    // d_node->left->left->value.value = node->left->value.value;
+                    tree_errors |= tree_copy_branch(d_tree, d_node->left->left, node->left);
+
+                    if (tree_errors)
+                    {
+                        dftr_errors |= DIFFERENCIATOR_ERRORS_TREE_ERROR;
+                        return dftr_errors;
+                    }
+
+                    break;
+
+                case MATH_OPERATIONS_COSINUS:
+                    d_node->value.type = TREE_NODE_TYPES_STRING;
+                    d_node->value.value.string = "*";
+
+                    tree_errors |= tree_insert(d_tree, d_node, TREE_NODE_BRANCH_LEFT, TREE_NULL);
+                    tree_errors |= tree_insert(d_tree, d_node, TREE_NODE_BRANCH_RIGHT, TREE_NULL);
+
+                    if (tree_errors)
+                    {
+                        dftr_errors |= DIFFERENCIATOR_ERRORS_TREE_ERROR;
+                        return dftr_errors;
+                    }
+
+                    d_node->left->value.type = TREE_NODE_TYPES_STRING;
+                    d_node->left->value.value.string = "*";
+                    dftr_errors |= dftr_create_diff_node(node->left, d_tree, d_node->right);
+
+                    tree_errors |= tree_insert(d_tree, d_node->left, TREE_NODE_BRANCH_LEFT, TREE_NULL);
+                    tree_errors |= tree_insert(d_tree, d_node->left, TREE_NODE_BRANCH_RIGHT, TREE_NULL);
+
+                    if (tree_errors)
+                    {
+                        dftr_errors |= DIFFERENCIATOR_ERRORS_TREE_ERROR;
+                        return dftr_errors;
+                    }
+
+                    d_node->left->left->value.type = TREE_NODE_TYPES_NUMBER;
+                    d_node->left->left->value.value.number = -1;
+                    d_node->left->right->value.type = TREE_NODE_TYPES_STRING;
+                    d_node->left->right->value.value.string = "sin";
+
+                    tree_errors |= tree_insert(d_tree, d_node->left->right, TREE_NODE_BRANCH_LEFT, TREE_NULL);
+
+                    if (tree_errors)
+                    {
+                        dftr_errors |= DIFFERENCIATOR_ERRORS_TREE_ERROR;
+                        return dftr_errors;
+                    }
+
+                    // d_node->left->right->left->value.type = node->left->value.type;
+                    // d_node->left->right->left->value.value = node->left->value.value;
+                    tree_errors |= tree_copy_branch(d_tree, d_node->left->right->left, node->left);
+
+                    if (tree_errors)
+                    {
+                        dftr_errors |= DIFFERENCIATOR_ERRORS_TREE_ERROR;
+                        return dftr_errors;
+                    }
+
+                    break;
+
+                default:
+                    MY_ASSERT(0 && "UNREACHABLE");
+                    break;
+            }
+            break;
+
+        case DIFFERENCIATOR_INPUT_INVALID:
         default:
             MY_ASSERT(0 && "UNREACHABLE");
             break;

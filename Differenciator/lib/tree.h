@@ -62,5 +62,6 @@
                            const char * tree_name, const char * func,
                            const int line, const char * file);
     void tree_text_dump(const Tree * tree);
+    TError_t tree_copy_branch(Tree * dst_tree, TreeNode * dst_node, const TreeNode * src_node);
 
 #endif // TREE_H
