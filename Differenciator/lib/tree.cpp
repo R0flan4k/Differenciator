@@ -10,8 +10,8 @@ const char * TREE_DUMP_FILE_NAME = "./graphviz/tree_dump";
 const size_t TRASH_VALUE = 0xAB1BA5;
 const size_t BUFFER_SIZE = 256;
 
-static size_t tree_free(TreeNode * main_node);
-static size_t tree_free_iternal(TreeNode * node, size_t * count);
+static size_t tree_free(TreeNode * * main_node);
+static size_t tree_free_iternal(TreeNode * * node, size_t * count);
 static void print_tree_nodes(const TreeNode * node, FILE * fp);
 static void print_tree_edges(const TreeNode * node, FILE * fp);
 static TError_t tree_create_node(Tree * tree, TreeNode * * node_ptr);
@@ -46,7 +46,7 @@ TError_t op_new_tree(Tree * tree, const Tree_t root_value)
 }
 
 
-static size_t tree_free(TreeNode * main_node)
+static size_t tree_free(TreeNode * * main_node)
 {
     MY_ASSERT(main_node);
 
@@ -56,23 +56,24 @@ static size_t tree_free(TreeNode * main_node)
 }
 
 
-static size_t tree_free_iternal(TreeNode * node, size_t * count)
+static size_t tree_free_iternal(TreeNode * * node, size_t * count)
 {
     MY_ASSERT(node);
+    MY_ASSERT(*node);
     MY_ASSERT(count);
 
-    if (node->left)
+    if ((*node)->left)
     {
-        tree_free_iternal(node->left, count);
+        tree_free_iternal(&(*node)->left, count);
     }
 
-    if (node->right)
+    if ((*node)->right)
     {
-        tree_free_iternal(node->right, count);
+        tree_free_iternal(&(*node)->right, count);
     }
 
-    free(node);
-    node = NULL;
+    free(*node);
+    *node = NULL;
     (*count)++;
 
     return *count;
@@ -91,7 +92,7 @@ TError_t op_delete_tree(Tree * tree)
         return errors;
     }
 
-    if (tree_free(tree->root) != tree->size)
+    if (tree_free(&(tree->root)) != tree->size)
         errors |= TREE_ERRORS_INVALID_SIZE;
     tree->size = TRASH_VALUE;
 
@@ -189,10 +190,11 @@ TError_t tree_insert(Tree * tree, TreeNode * node, TreeNodeBranches mode, const 
 }
 
 
-TError_t tree_delete_branch(Tree * tree, TreeNode * node)
+TError_t tree_delete_branch(Tree * tree, TreeNode * * node)
 {
     MY_ASSERT(tree);
     MY_ASSERT(node);
+    MY_ASSERT(*node);
 
     TError_t errors = 0;
 
@@ -202,6 +204,7 @@ TError_t tree_delete_branch(Tree * tree, TreeNode * node)
     }
 
     size_t deleting_nodes_count = tree_free(node);
+    *node = NULL;
 
     if (tree->size < deleting_nodes_count)
     {

@@ -36,6 +36,10 @@ static DError_t d_sinus(const TreeNode * node, Tree * d_tree, TreeNode * d_node)
 static DError_t d_cosinus(const TreeNode * node, Tree * d_tree, TreeNode * d_node);
 static void latex_print_equation(const Tree * tree, FILE * fp, const char * func);
 static void latex_print_equation_recursive(const TreeNode * node, FILE * fp);
+static bool try_get_math_operation(const char * math_operation_name, size_t * operation_id);
+static bool try_get_variable(const char * variable_name, size_t * variable_id);
+static DError_t dftr_calculate_optimization_recursive(Tree * tree, TreeNode * node);
+static DError_t try_calculate_branch(Tree * tree, TreeNode * node, bool * success);
 
 
 DError_t create_dftr_tree(Tree * tree, char * buffer)
@@ -285,7 +289,12 @@ static void dftr_print_tree_nodes(const TreeNode * node, FILE * fp)
             break;
 
         case TREE_NODE_TYPES_NO_TYPE:
+            MY_ASSERT(0 && "NO TYPE");
+            break;
+
         default:
+            printf("NODE TYPE: %d\n", (int) node->value.type);
+            printf("NODE VALUE: %lf %s\n", node->value.value.number, node->value.value.string);
             MY_ASSERT(0 && "UNREACHABLE");
             break;
     }
@@ -482,27 +491,40 @@ static DifferenciatorInput get_node_input_type(const TreeNode * node, size_t * i
             break;
 
         case TREE_NODE_TYPES_STRING:
-            for (*i = 0; *i < MATH_OPERATIONS_ARRAY_SIZE; (*i)++)
+            if (is_supported_input = try_get_math_operation(node->value.value.string, i))
             {
-                if (!strcmp(node->value.value.string, MATH_OPERATIONS_ARRAY[*i].name))
-                {
-                    is_supported_input = true;
-                    input_type = DIFFERENCIATOR_INPUT_OPERATION;
-                    break;
-                }
+                input_type = DIFFERENCIATOR_INPUT_OPERATION;
+            }
+            else if (is_supported_input = try_get_variable(node->value.value.string, i))
+            {
+                input_type = DIFFERENCIATOR_INPUT_VARIABLE;
+            }
+            else
+            {
+                return DIFFERENCIATOR_INPUT_INVALID;
             }
 
-            if (!is_supported_input)
-            {
-                for (*i = 0; *i < SUPPORTED_VARIABLES_NUMBER; (*i)++)
-                {
-                    if (!strcmp(node->value.value.string, SUPPORTED_VARIABLES[*i].name))
-                    {
-                        is_supported_input = true;
-                        input_type = DIFFERENCIATOR_INPUT_VARIABLE;
-                    }
-                }
-            }
+//             for (*i = 0; *i < MATH_OPERATIONS_ARRAY_SIZE; (*i)++)
+//             {
+//                 if (!strcmp(node->value.value.string, MATH_OPERATIONS_ARRAY[*i].name))
+//                 {
+//                     is_supported_input = true;
+//                     input_type = DIFFERENCIATOR_INPUT_OPERATION;
+//                     break;
+//                 }
+//             }
+//
+//             if (!is_supported_input)
+//             {
+//                 for (*i = 0; *i < SUPPORTED_VARIABLES_NUMBER; (*i)++)
+//                 {
+//                     if (!strcmp(node->value.value.string, SUPPORTED_VARIABLES[*i].name))
+//                     {
+//                         is_supported_input = true;
+//                         input_type = DIFFERENCIATOR_INPUT_VARIABLE;
+//                     }
+//                 }
+//             }
             break;
 
         case TREE_NODE_TYPES_NO_TYPE:
@@ -512,6 +534,40 @@ static DifferenciatorInput get_node_input_type(const TreeNode * node, size_t * i
     }
 
     return input_type;
+}
+
+
+static bool try_get_math_operation(const char * math_operation_name, size_t * operation_id)
+{
+    MY_ASSERT(math_operation_name);
+    MY_ASSERT(operation_id);
+
+    for (*operation_id = 0; *operation_id < MATH_OPERATIONS_ARRAY_SIZE; (*operation_id)++)
+    {
+        if (!strcmp(math_operation_name, MATH_OPERATIONS_ARRAY[*operation_id].name))
+            return true;
+    }
+
+    *operation_id = 0;
+
+    return false;
+}
+
+
+static bool try_get_variable(const char * variable_name, size_t * variable_id)
+{
+    MY_ASSERT(variable_name);
+    MY_ASSERT(variable_id);
+
+    for (*variable_id = 0; *variable_id < SUPPORTED_VARIABLES_NUMBER; (*variable_id)++)
+    {
+        if (!strcmp(variable_name, SUPPORTED_VARIABLES[*variable_id].name))
+            return true;
+    }
+
+    *variable_id = 0;
+
+    return false;
 }
 
 
@@ -992,6 +1048,90 @@ static DError_t d_cosinus(const TreeNode * node, Tree * d_tree, TreeNode * d_nod
         dftr_errors |= DIFFERENCIATOR_ERRORS_TREE_ERROR;
         return dftr_errors;
     }
+
+    return dftr_errors;
+}
+
+
+DError_t dftr_calculate_optimization(Tree * tree)
+{
+    MY_ASSERT(tree);
+
+    return dftr_calculate_optimization_recursive(tree, tree->root);
+}
+
+
+static DError_t dftr_calculate_optimization_recursive(Tree * tree, TreeNode * node)
+{
+    MY_ASSERT(node);
+    MY_ASSERT(tree);
+
+    DError_t dftr_errors = 0;
+
+    if (node->left)
+        dftr_errors |= dftr_calculate_optimization_recursive(tree, node->left);
+    if (node->right)
+        dftr_errors |= dftr_calculate_optimization_recursive(tree, node->right);
+
+    if (dftr_errors)
+        return dftr_errors;
+
+    bool is_calculated = false;
+    dftr_errors |= try_calculate_branch(tree, node, &is_calculated);
+
+    return dftr_errors;
+}
+
+
+static DError_t try_calculate_branch(Tree * tree, TreeNode * node, bool * success)
+{
+    MY_ASSERT(node);
+    MY_ASSERT(success);
+
+    DError_t dftr_errors = 0;
+    TError_t tree_errors = 0;
+
+    if (!node->left || node->left->value.type != TREE_NODE_TYPES_NUMBER)
+    {
+        *success = false;
+        return dftr_errors;
+    }
+
+    size_t math_operation_id = 0;
+    if (!try_get_math_operation(node->value.value.string, &math_operation_id))
+    {
+        dftr_errors |= DIFFERENCIATOR_ERRORS_INVALID_INPUT;
+        return dftr_errors;
+    }
+
+    switch (MATH_OPERATIONS_ARRAY[math_operation_id].type)
+    {
+        case MATH_OPERATION_TYPES_UNARY:
+            node->value.type = TREE_NODE_TYPES_NUMBER;
+            node->value.value.number = MATH_OPERATIONS_ARRAY[math_operation_id].operation(node->left->value.value.number, 0);
+            break;
+
+        case MATH_OPERATION_TYPES_BINARY:
+            if (node->right->value.type != TREE_NODE_TYPES_NUMBER)
+            {
+                *success = false;
+                return dftr_errors;
+            }
+            node->value.type = TREE_NODE_TYPES_NUMBER;
+            node->value.value.number = MATH_OPERATIONS_ARRAY[math_operation_id].operation(node->left->value.value.number,
+                                                                                          node->right->value.value.number);
+            tree_errors |= tree_delete_branch(tree, &node->right);
+            break;
+
+        default:
+            MY_ASSERT(0 && "UNREACHABLE");
+            break;
+    }
+
+    tree_errors |= tree_delete_branch(tree, &node->left);
+
+    if (tree_errors)
+        dftr_errors |= DIFFERENCIATOR_ERRORS_TREE_ERROR;
 
     return dftr_errors;
 }

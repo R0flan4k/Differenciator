@@ -57,7 +57,7 @@
     TError_t op_delete_tree(Tree * tree);
     TError_t tree_vtor(const Tree * tree);
     TError_t tree_insert(Tree * tree, TreeNode * node, TreeNodeBranches mode, const Tree_t value);
-    TError_t tree_delete_branch(Tree * tree, TreeNode * node);
+    TError_t tree_delete_branch(Tree * tree, TreeNode * * node);
     void tree_dump_iternal(const Tree * tree,
                            const char * tree_name, const char * func,
                            const int line, const char * file);
