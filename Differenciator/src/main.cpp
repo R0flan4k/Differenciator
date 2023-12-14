@@ -56,6 +56,11 @@ int main(int argc, char * argv[])
     {
         return dftr_errors;
     }
+    dftr_dump(&dftr_d_tree);
+    if (dftr_errors = dftr_replace_optimization(&dftr_d_tree))
+    {
+        return dftr_errors;
+    }
 
     dftr_dump(&dftr_d_tree);
 
