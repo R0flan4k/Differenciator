@@ -29,7 +29,8 @@
     DError_t dftr_eval(const Tree * dftr_tree, double * answer);
     DError_t dftr_create_diff_tree(const Tree * tree, Tree * d_tree);
     void dftr_latex(const Tree * tree, const Tree * d_tree);
-    DError_t dftr_calculate_optimization(Tree * tree);
-    DError_t dftr_replace_optimization(Tree * tree);
+    DError_t dftr_calculate_optimization(Tree * tree, bool * is_calculated);
+    DError_t dftr_replace_optimization(Tree * tree, bool * is_replaced);
+    DError_t dftr_optimization(Tree * tree);
 
 #endif

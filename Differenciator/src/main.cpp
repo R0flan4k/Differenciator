@@ -52,18 +52,12 @@ int main(int argc, char * argv[])
     dftr_dump(&dftr_tree);
     dftr_dump(&dftr_d_tree);
 
-    if (dftr_errors = dftr_calculate_optimization(&dftr_d_tree))
-    {
-        return dftr_errors;
-    }
-    dftr_dump(&dftr_d_tree);
-    if (dftr_errors = dftr_replace_optimization(&dftr_d_tree))
+    if (dftr_errors = dftr_optimization(&dftr_d_tree))
     {
         return dftr_errors;
     }
 
     dftr_dump(&dftr_d_tree);
-
     tree_dump(&dftr_tree);
     tree_dump(&dftr_d_tree);
     dftr_latex(&dftr_tree, &dftr_d_tree);

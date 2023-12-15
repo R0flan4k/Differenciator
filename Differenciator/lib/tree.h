@@ -43,6 +43,7 @@
         Tree_t value;
         TreeNode * right;
         TreeNode * left;
+        TreeNode * parent;
     };
 
     struct Tree {
@@ -63,5 +64,6 @@
                            const int line, const char * file);
     void tree_text_dump(const Tree * tree);
     TError_t tree_copy_branch(Tree * dst_tree, TreeNode * dst_node, const TreeNode * src_node);
+    TError_t tree_glue_node(Tree * tree, TreeNode * node, const TreeNodeBranches glue_branch);
 
 #endif // TREE_H

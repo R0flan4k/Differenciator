@@ -14,7 +14,7 @@ static size_t tree_free(TreeNode * * main_node);
 static size_t tree_free_iternal(TreeNode * * node, size_t * count);
 static void print_tree_nodes(const TreeNode * node, FILE * fp);
 static void print_tree_edges(const TreeNode * node, FILE * fp);
-static TError_t tree_create_node(Tree * tree, TreeNode * * node_ptr);
+static TError_t tree_create_node(Tree * tree, TreeNode * const parent_node, TreeNode * * node_ptr);
 static void print_text_nodes(const TreeNode * main_node);
 
 
@@ -39,6 +39,7 @@ TError_t op_new_tree(Tree * tree, const Tree_t root_value)
 
     tree->root->left = NULL;
     tree->root->right = NULL;
+    tree->root->parent = NULL;
 
     tree->root->value = root_value;
 
@@ -116,7 +117,7 @@ TError_t tree_vtor(const Tree * tree)
 }
 
 
-static TError_t tree_create_node(Tree * tree, TreeNode * * node_ptr)
+static TError_t tree_create_node(Tree * tree, TreeNode * const parent_node, TreeNode * * node_ptr)
 {
     MY_ASSERT(tree);
     MY_ASSERT(!*node_ptr);
@@ -131,6 +132,7 @@ static TError_t tree_create_node(Tree * tree, TreeNode * * node_ptr)
 
     (*node_ptr)->left = NULL;
     (*node_ptr)->right = NULL;
+    (*node_ptr)->parent = parent_node;
 
     (*node_ptr)->value = TREE_NULL;
 
@@ -160,7 +162,7 @@ TError_t tree_insert(Tree * tree, TreeNode * node, TreeNodeBranches mode, const 
                 return errors;
             }
 
-            if (errors = tree_create_node(tree, &node->left))
+            if (errors = tree_create_node(tree, node, &node->left))
                 return errors;
 
             node->left->value = value;
@@ -174,7 +176,7 @@ TError_t tree_insert(Tree * tree, TreeNode * node, TreeNodeBranches mode, const 
                 return errors;
             }
 
-            if (errors = tree_create_node(tree, &node->right))
+            if (errors = tree_create_node(tree, node, &node->right))
                 return errors;
 
             node->right->value = value;
@@ -308,8 +310,8 @@ static void print_tree_nodes(const TreeNode * node, FILE * fp)
 
     // fprintf(fp, "%lf", node->value);
 
-    fprintf(fp, " | { <l> left[%p] | right[%p]  }}\" ]\n",
-            node->left, node->right);
+    fprintf(fp, " | parent[%p] | { <l> left[%p] | right[%p]  }}\" ]\n",
+            node->parent, node->left, node->right);
 
     if (node->right)
     {
@@ -395,6 +397,62 @@ TError_t tree_copy_branch(Tree * dst_tree, TreeNode * dst_node, const TreeNode *
        errors |= tree_insert(dst_tree, dst_node, TREE_NODE_BRANCH_RIGHT, TREE_NULL);
        tree_copy_branch(dst_tree, dst_node->right, src_node->right);
     }
+
+    return errors;
+}
+
+
+TError_t tree_glue_node(Tree * tree, TreeNode * node, const TreeNodeBranches glue_branch)
+{
+    MY_ASSERT(tree);
+    MY_ASSERT(node);
+
+    TError_t errors = 0;
+
+    TreeNode * glue_node = NULL;
+    TreeNode * * deleting_node = NULL;
+
+    switch (glue_branch)
+    {
+        case TREE_NODE_BRANCH_LEFT:
+            glue_node = node->left;
+            deleting_node = &node->right;
+            break;
+
+        case TREE_NODE_BRANCH_RIGHT:
+            glue_node = node->right;
+            deleting_node = &node->left;
+            break;
+    }
+
+    if (node == tree->root)
+    {
+        free(node);
+        tree->size -= tree_free(deleting_node) + 1;
+
+        glue_node->parent = NULL;
+        tree->root = glue_node;
+
+        return errors;
+    }
+
+    TreeNode * * parent_branch = NULL;
+    TreeNode * parent_node = node->parent;
+
+    if (node == node->parent->left)
+    {
+        parent_branch = &node->parent->left;
+    }
+    else if (node == node->parent->right)
+    {
+        parent_branch = &node->parent->right;
+    }
+
+    free(node);
+    tree->size -= tree_free(deleting_node) + 1;
+
+    *parent_branch = glue_node;
+    glue_node->parent = parent_node;
 
     return errors;
 }

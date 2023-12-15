@@ -7,6 +7,7 @@
 #include "strings.h"
 #include "file_processing.h"
 #include "math_operations.h"
+#include "double_comparing.h"
 
 const char * DIFFERENCIATOR_DUMP_FILE_NAME = "./graphviz/differenciator_dump";
 const char * DIFFERENCIATOR_LATEX_DUMP_FILE_NAME = "./latex/differenciator_dump";
@@ -38,9 +39,9 @@ static void latex_print_equation(const Tree * tree, FILE * fp, const char * func
 static void latex_print_equation_recursive(const TreeNode * node, FILE * fp);
 static bool try_get_math_operation(const char * math_operation_name, size_t * operation_id);
 static bool try_get_variable(const char * variable_name, size_t * variable_id);
-static DError_t dftr_calculate_optimization_recursive(Tree * tree, TreeNode * node);
+static DError_t dftr_calculate_optimization_recursive(Tree * tree, TreeNode * node, bool * is_calculated);
 static DError_t try_calculate_branch(Tree * tree, TreeNode * node, bool * success);
-static DError_t dftr_replace_optimization_recursive(Tree * tree, TreeNode * node);
+static DError_t dftr_replace_optimization_recursive(Tree * tree, TreeNode * node, bool * is_replaced);
 static DError_t try_replace_node(Tree * tree, TreeNode * node, bool * success);
 
 
@@ -362,13 +363,16 @@ void dftr_latex(const Tree * tree, const Tree * d_tree)
                 "\\author{Kiselev Ruslan}\n"
                 "\\begin{document}\n"
                 "\t\\maketitle\n"
+                "\t\\begin{center}\n"
+                "\t\\fontsize{30}{50}\\selectfont\n"
                 "\tSource equation:\n\n");
     latex_print_equation(tree, fp, "f");
 
     fprintf(fp, "\tDifferenciated equation:\n\n");
     latex_print_equation(d_tree, fp, "f^{'}");
 
-    fprintf(fp, "\\end{document}\n");
+    fprintf(fp, "\t\\end{center}\n"
+                "\\end{document}\n");
 
     fclose(fp);
 
@@ -1069,15 +1073,15 @@ static DError_t d_cosinus(const TreeNode * node, Tree * d_tree, TreeNode * d_nod
 }
 
 
-DError_t dftr_calculate_optimization(Tree * tree)
+DError_t dftr_calculate_optimization(Tree * tree, bool * is_calculated)
 {
     MY_ASSERT(tree);
 
-    return dftr_calculate_optimization_recursive(tree, tree->root);
+    return dftr_calculate_optimization_recursive(tree, tree->root, is_calculated);
 }
 
 
-static DError_t dftr_calculate_optimization_recursive(Tree * tree, TreeNode * node)
+static DError_t dftr_calculate_optimization_recursive(Tree * tree, TreeNode * node, bool * is_calculated)
 {
     MY_ASSERT(node);
     MY_ASSERT(tree);
@@ -1085,15 +1089,14 @@ static DError_t dftr_calculate_optimization_recursive(Tree * tree, TreeNode * no
     DError_t dftr_errors = 0;
 
     if (node->left)
-        dftr_errors |= dftr_calculate_optimization_recursive(tree, node->left);
+        dftr_errors |= dftr_calculate_optimization_recursive(tree, node->left, is_calculated);
     if (node->right)
-        dftr_errors |= dftr_calculate_optimization_recursive(tree, node->right);
+        dftr_errors |= dftr_calculate_optimization_recursive(tree, node->right, is_calculated);
 
     if (dftr_errors)
         return dftr_errors;
 
-    bool is_calculated = false;
-    dftr_errors |= try_calculate_branch(tree, node, &is_calculated);
+    dftr_errors |= try_calculate_branch(tree, node, is_calculated);
 
     return dftr_errors;
 }
@@ -1153,15 +1156,15 @@ static DError_t try_calculate_branch(Tree * tree, TreeNode * node, bool * succes
 }
 
 
-DError_t dftr_replace_optimization(Tree * tree)
+DError_t dftr_replace_optimization(Tree * tree, bool * is_replaced)
 {
     MY_ASSERT(tree);
 
-    return dftr_replace_optimization_recursive(tree, tree->root);
+    return dftr_replace_optimization_recursive(tree, tree->root, is_replaced);
 }
 
 
-static DError_t dftr_replace_optimization_recursive(Tree * tree, TreeNode * node)
+static DError_t dftr_replace_optimization_recursive(Tree * tree, TreeNode * node, bool * is_replaced)
 {
     MY_ASSERT(tree);
     MY_ASSERT(node);
@@ -1169,15 +1172,14 @@ static DError_t dftr_replace_optimization_recursive(Tree * tree, TreeNode * node
     DError_t dftr_errors = 0;
 
     if (node->left)
-        dftr_errors |= dftr_replace_optimization_recursive(tree, node->left);
+        dftr_errors |= dftr_replace_optimization_recursive(tree, node->left, is_replaced);
     if (node->right)
-        dftr_errors |= dftr_replace_optimization_recursive(tree, node->right);
+        dftr_errors |= dftr_replace_optimization_recursive(tree, node->right, is_replaced);
 
     if (dftr_errors)
         return dftr_errors;
 
-    bool is_replaced = false;
-    dftr_errors |= try_replace_node(tree, node, &is_replaced);
+    dftr_errors |= try_replace_node(tree, node, is_replaced);
 
     return dftr_errors;
 }
@@ -1192,64 +1194,69 @@ static DError_t try_replace_node(Tree * tree, TreeNode * node, bool * success)
     DError_t dftr_errors = 0;
     TError_t tree_errors = 0;
     bool is_replaced = false;
+    bool l_delete_neccessary = false;
+    bool r_delete_neccessary = false;
     size_t math_operation_id = 0;
 
+
     DifferenciatorInput input_type = get_node_input_type(node, &math_operation_id);
-    DifferenciatorInput l_input_type = DIFFERENCIATOR_INPUT_INVALID;
-    DifferenciatorInput r_input_type = DIFFERENCIATOR_INPUT_INVALID;
+    // DifferenciatorInput l_input_type = DIFFERENCIATOR_INPUT_INVALID;
+    // DifferenciatorInput r_input_type = DIFFERENCIATOR_INPUT_INVALID;
 
     if (input_type != DIFFERENCIATOR_INPUT_OPERATION)
     {
         return dftr_errors;
     }
 
-    if (node->left)
-        l_input_type = get_node_input_type(node->left, &math_operation_id);
+//     if (node->left)
+//         l_input_type = get_node_input_type(node->left, NULL);
+//
+//     if (node->right)
+//         r_input_type = get_node_input_type(node->right, NULL);
 
-    if (node->right)
-        r_input_type = get_node_input_type(node->right, &math_operation_id);
-
-    switch (MATH_OPERATIONS_ARRAY[math_operation_id].type)
-    {
-        case MATH_OPERATION_TYPES_BINARY:
-            if (l_input_type == DIFFERENCIATOR_INPUT_OPERATION ||
-                r_input_type == DIFFERENCIATOR_INPUT_OPERATION)
-            {
-                return dftr_errors;
-            }
-
-            break;
-
-        case MATH_OPERATION_TYPES_UNARY:
-            if (l_input_type == DIFFERENCIATOR_INPUT_OPERATION)
-            {
-                return dftr_errors;
-            }
-
-            break;
-
-        default:
-            MY_ASSERT(0 && "UNREACHABLE");
-            break;
-    }
+//     switch (MATH_OPERATIONS_ARRAY[math_operation_id].type)
+//     {
+//         case MATH_OPERATION_TYPES_BINARY:
+//             if (l_input_type == DIFFERENCIATOR_INPUT_OPERATION ||
+//                 r_input_type == DIFFERENCIATOR_INPUT_OPERATION)
+//             {
+//                 return dftr_errors;
+//             }
+//
+//             break;
+//
+//         case MATH_OPERATION_TYPES_UNARY:
+//             if (l_input_type == DIFFERENCIATOR_INPUT_OPERATION)
+//             {
+//                 return dftr_errors;
+//             }
+//
+//             break;
+//
+//         default:
+//             MY_ASSERT(0 && "UNREACHABLE");
+//             break;
+//     }
 
     switch (MATH_OPERATIONS_ARRAY[math_operation_id].id)
     {
         case MATH_OPERATIONS_ADDITION:
             if (node->right->value.type == TREE_NODE_TYPES_NUMBER &&
-                node->right->value.value.number == 0)
+                is_equal_double(node->right->value.value.number, 0))
             {
-                node->value.type = node->left->value.type;
-                node->value.value = node->left->value.value;
+                // node->value.type = node->left->value.type;
+                // node->value.value = node->left->value.value;
+                tree_errors |= tree_glue_node(tree, node, TREE_NODE_BRANCH_LEFT);
                 is_replaced = true;
                 break;
             }
 
             if (node->left->value.type == TREE_NODE_TYPES_NUMBER &&
-                node->left->value.value.number == 0)
+                is_equal_double(node->left->value.value.number, 0))
             {
-                node->value.type = node->right->value.type;
-                node->value.value = node->right->value.value;
+                // node->value.type = node->right->value.type;
+                // node->value.value = node->right->value.value;
+                tree_errors |= tree_glue_node(tree, node, TREE_NODE_BRANCH_RIGHT);
                 is_replaced = true;
                 break;
             }
@@ -1258,10 +1265,11 @@ static DError_t try_replace_node(Tree * tree, TreeNode * node, bool * success)
 
         case MATH_OPERATIONS_SUBTRACTION:
             if (node->right->value.type == TREE_NODE_TYPES_NUMBER &&
-                node->right->value.value.number == 0)
+                is_equal_double(node->right->value.value.number, 0))
             {
-                node->value.type = node->left->value.type;
-                node->value.value = node->left->value.value;
+                // node->value.type = node->left->value.type;
+                // node->value.value = node->left->value.value;
+                tree_errors |= tree_glue_node(tree, node, TREE_NODE_BRANCH_LEFT);
                 is_replaced = true;
                 break;
             }
@@ -1270,37 +1278,43 @@ static DError_t try_replace_node(Tree * tree, TreeNode * node, bool * success)
 
         case MATH_OPERATIONS_MULTIPLICATION:
             if (node->right->value.type == TREE_NODE_TYPES_NUMBER &&
-                node->right->value.value.number == 1)
+                is_equal_double(node->right->value.value.number, 1))
             {
-                node->value.type = node->left->value.type;
-                node->value.value = node->left->value.value;
+                // node->value.type = node->left->value.type;
+                // node->value.value = node->left->value.value;
+                tree_errors |= tree_glue_node(tree, node, TREE_NODE_BRANCH_LEFT);
                 is_replaced = true;
                 break;
             }
 
             if (node->left->value.type == TREE_NODE_TYPES_NUMBER &&
-                node->left->value.value.number == 1)
+                is_equal_double(node->left->value.value.number, 1))
             {
-                node->value.type = node->right->value.type;
-                node->value.value = node->right->value.value;
+                // node->value.type = node->right->value.type;
+                // node->value.value = node->right->value.value;
+                tree_errors |= tree_glue_node(tree, node, TREE_NODE_BRANCH_RIGHT);
                 is_replaced = true;
                 break;
             }
 
             if (node->right->value.type == TREE_NODE_TYPES_NUMBER &&
-                node->right->value.value.number == 0)
+                is_equal_double(node->right->value.value.number, 0))
             {
                 node->value.type = TREE_NODE_TYPES_NUMBER;
                 node->value.value.number = 0;
+                l_delete_neccessary = true;
+                r_delete_neccessary = true;
                 is_replaced = true;
                 break;
             }
 
             if (node->left->value.type == TREE_NODE_TYPES_NUMBER &&
-                node->left->value.value.number == 0)
+                is_equal_double(node->left->value.value.number, 0))
             {
                 node->value.type = TREE_NODE_TYPES_NUMBER;
                 node->value.value.number = 0;
+                l_delete_neccessary = true;
+                r_delete_neccessary = true;
                 is_replaced = true;
                 break;
             }
@@ -1309,19 +1323,22 @@ static DError_t try_replace_node(Tree * tree, TreeNode * node, bool * success)
 
         case MATH_OPERATIONS_DIVISION:
             if (node->right->value.type == TREE_NODE_TYPES_NUMBER &&
-                node->right->value.value.number == 1)
+                is_equal_double(node->right->value.value.number, 1))
             {
-                node->value.type = node->left->value.type;
-                node->value.value = node->left->value.value;
+                // node->value.type = node->left->value.type;
+                // node->value.value = node->left->value.value;
+                tree_errors |= tree_glue_node(tree, node, TREE_NODE_BRANCH_LEFT);
                 is_replaced = true;
                 break;
             }
 
             if (node->left->value.type == TREE_NODE_TYPES_NUMBER &&
-                node->left->value.value.number == 0)
+                is_equal_double(node->left->value.value.number, 0))
             {
                 node->value.type = TREE_NODE_TYPES_NUMBER;
                 node->value.value.number = 0;
+                l_delete_neccessary = true;
+                r_delete_neccessary = true;
                 is_replaced = true;
                 break;
             }
@@ -1330,28 +1347,33 @@ static DError_t try_replace_node(Tree * tree, TreeNode * node, bool * success)
 
         case MATH_OPERATIONS_POWER:
             if (node->left->value.type == TREE_NODE_TYPES_NUMBER &&
-                node->left->value.value.number == 1 || node->left->value.value.number == 0)
+                (is_equal_double(node->left->value.value.number, 1) || is_equal_double(node->left->value.value.number, 0)))
             {
                 node->value.type = TREE_NODE_TYPES_NUMBER;
                 node->value.value = node->left->value.value;
+                l_delete_neccessary = true;
+                r_delete_neccessary = true;
                 is_replaced = true;
                 break;
             }
 
             if (node->right->value.type == TREE_NODE_TYPES_NUMBER &&
-                node->right->value.value.number == 1)
+                is_equal_double(node->right->value.value.number, 1))
             {
-                node->value.type = node->left->value.type;
-                node->value.value = node->left->value.value;
+                // node->value.type = node->left->value.type;
+                // node->value.value = node->left->value.value;
+                tree_errors |= tree_glue_node(tree, node, TREE_NODE_BRANCH_LEFT);
                 is_replaced = true;
                 break;
             }
 
             if (node->right->value.type == TREE_NODE_TYPES_NUMBER &&
-                node->right->value.value.number == 0)
+                is_equal_double(node->right->value.value.number, 0))
             {
                 node->value.type = TREE_NODE_TYPES_NUMBER;
                 node->value.value.number = 1;
+                l_delete_neccessary = true;
+                r_delete_neccessary = true;
                 is_replaced = true;
                 break;
             }
@@ -1360,8 +1382,6 @@ static DError_t try_replace_node(Tree * tree, TreeNode * node, bool * success)
 
         case MATH_OPERATIONS_SINUS:
         case MATH_OPERATIONS_COSINUS:
-            *success = false;
-
             break;
 
         default:
@@ -1377,8 +1397,11 @@ static DError_t try_replace_node(Tree * tree, TreeNode * node, bool * success)
     switch (MATH_OPERATIONS_ARRAY[math_operation_id].type)
     {
         case MATH_OPERATION_TYPES_BINARY:
-            printf("DELETING BRANCH:\n\t%.2lf\n\t%s\n", node->right->value.value.number, node->right->value.type == TREE_NODE_TYPES_STRING ? node->right->value.value.string : "-");
-            tree_errors |= tree_delete_branch(tree, &node->right);
+            if (r_delete_neccessary)
+            {
+                printf("DELETING BRANCH:\n\t%.2lf\n\t%s\n", node ? node->right->value.value.number : 0, node ? (node->right->value.type == TREE_NODE_TYPES_STRING ? node->right->value.value.string : "-") : "-");
+                tree_errors |= tree_delete_branch(tree, &node->right);
+            }
             break;
 
         case MATH_OPERATION_TYPES_UNARY:
@@ -1389,15 +1412,40 @@ static DError_t try_replace_node(Tree * tree, TreeNode * node, bool * success)
             break;
     }
 
-    printf("DELETING BRANCH:\n\t%.2lf\n\t%s\n", node->left->value.value.number, node->left->value.type == TREE_NODE_TYPES_STRING ? node->left->value.value.string : "-");
-    tree_errors |= tree_delete_branch(tree, &node->left);
+    if (l_delete_neccessary)
+    {
+        printf("DELETING BRANCH:\n\t%.2lf\n\t%s\n", node ? node->right->value.value.number : 0, node ? (node->right->value.type == TREE_NODE_TYPES_STRING ? node->right->value.value.string : "-") : "-");
+        tree_errors |= tree_delete_branch(tree, &node->left);
+    }
 
-    printf("NEW CUR BRANCH:\n\t%.2lf\n\t%s\n\n", node->value.value.number, node->value.type == TREE_NODE_TYPES_STRING ? node->value.value.string : "-");
+    printf("NEW CUR BRANCH:\n\t%.2lf\n\t%s\n\n", node ? node->value.value.number : 0, node ? (node->value.type == TREE_NODE_TYPES_STRING ? node->value.value.string : "-") : "-");
 
     if (tree_errors)
         dftr_errors |= DIFFERENCIATOR_ERRORS_TREE_ERROR;
 
     *success = true;
+
+    return dftr_errors;
+}
+
+
+DError_t dftr_optimization(Tree * tree)
+{
+    MY_ASSERT(tree);
+
+    bool is_changed = false;
+    DError_t dftr_errors = 0;
+
+    do
+    {
+        is_changed = false;
+
+        dftr_errors |= dftr_calculate_optimization(tree, &is_changed);
+        dftr_errors |= dftr_replace_optimization(tree, &is_changed);
+
+        if (dftr_errors)
+            return dftr_errors;
+    } while (is_changed);
 
     return dftr_errors;
 }
